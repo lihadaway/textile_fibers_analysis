@@ -13,6 +13,17 @@ It includes:
 - Import and export data
 - Domestic consumption metrics
 
+### Data Retrieval
+
+To automate the dataset retrieval process, a shell script is provided. This script downloads the latest dataset directly from the USDA website.
+
+Usage:
+
+```shell
+chmod +x get_data.sh
+./get_data.sh
+```
+
 ## Objectives
 - **Exploratory Data Analysis (EDA)**: Summarize key characteristics using descriptive statistics and visualizations.
 - **Statistical & Machine Learning Techniques**:
