@@ -1,3 +1,4 @@
+# load libraries
 library(tidyverse)
 library(readxl)
 
@@ -7,7 +8,7 @@ read_us_cotton_data <- function(sheet_name) {
   read_excel(
     path = "./data/U.S.CottonSupplyandDemand.xlsx",
     sheet = sheet_name,
-    range = "A7:U56",
+    range = "A7:U55",
     col_names = c("year", "AL", "AZ", "AR", "CA", "FL", "GA", "KS", "KY", "LA", "MS", "MO", "NV", "NM", "NC", "OK",
                   "SC", "TN", "TX", "VA", "U.S.")
   )
@@ -19,7 +20,7 @@ read_world_cotton_data <- function(sheet_name, columns) {
   read_excel(
     path = "./data/WorldCottonSupplyandDemand.xlsx",
     sheet = sheet_name,
-    range = "A7:K56",
+    range = "A7:K55",
     col_names = columns
   )
 }
@@ -46,7 +47,7 @@ us_cotton_data <- list(
 world_cotton_data <- list(
   major_foreign_exporters = read_world_cotton_data(
     sheet_name = "Table 17",
-    columns = c("year", "Uzbekistan 1/", "Africa 2/", "Australia", "Pakistan", "India", "Turkey", "Sudan", "Brazil",
+    columns = c("year", "Uzbekistan", "Africa", "Australia", "Pakistan", "India", "Turkey", "Sudan", "Brazil",
                 "Mexico", "Egypt")), # 1,000 480-pound bales
   major_foreign_importers = read_world_cotton_data(
     sheet_name = "Table 18",
@@ -61,9 +62,9 @@ us_cotton_prices <- read_cotton_price_data(
 
 # clean U.S. cotton prices table
 us_cotton_prices <- us_cotton_prices |>
-  mutate(across(everything(), ~str_replace_all(.x, " 2/", ""))) |>
-  mutate(across(everything(), ~ifelse(.x == "NA", NA, .x))) |>
-  mutate(across(-year, as.numeric))
+  mutate(across(.cols = everything(), .fn = ~str_replace_all(string = .x, pattern = " 2/", replacement = ""))) |>
+  mutate(across(.cols = everything(), .fn = ~ifelse(test = .x == "NA", yes = NA, no = .x))) |>
+  mutate(across(.cols = -year, .fn = as.numeric))
 
 # output structure
 str(us_cotton_data)
@@ -73,18 +74,22 @@ str(us_cotton_prices)
 # cast numeric columns
 us_cotton_data <- lapply(us_cotton_data, function(df) {
   df |>
-    mutate(across(.cols = 2:ncol(df), .fns = ~as.numeric(.)))
+    mutate(across(.cols = year, .fn = ~str_replace_all(string = .x, pattern = " 1/", replacement = ""))) |>
+    mutate(across(.cols = everything(), .fn = ~ifelse(test = .x == "NA", yes = NA, no = .x))) |>
+    mutate(across(.cols = 2:ncol(df), .fn = ~as.numeric(.)))
 })
 
 world_cotton_data <- lapply(world_cotton_data, function(df) {
   df |>
-    mutate(across(.cols = 2:ncol(df), .fns = ~as.numeric(.)))
+    mutate(across(.cols = year, .fn = ~str_replace_all(string = .x, pattern = " 3/| 4/", replacement = ""))) |>
+    mutate(across(.cols = everything(), .fn = ~ifelse(test = .x == "NA", yes = NA, no = .x))) |>
+    mutate(across(.cols = 2:ncol(df), .fn = ~as.numeric(.)))
 })
 
 # check for missing values
-map(us_cotton_data, ~sum(is.na(.)))
-map(world_cotton_data, ~sum(is.na(.)))
-map(us_cotton_prices, ~sum(is.na(.)))
+map(.x = us_cotton_data, .f = ~sum(is.na(.)))
+map(.x = world_cotton_data, .f = ~sum(is.na(.)))
+map(.x = us_cotton_prices, .f = ~sum(is.na(.)))
 
 # output structure
 str(us_cotton_data)
