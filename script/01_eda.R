@@ -109,11 +109,38 @@ us_cotton_prices_long <- us_cotton_prices |>
   drop_na(Price)
 
 # visualize total cotton produced in U.S. over time
-ggplot(us_cotton_data$production, aes(x = year, y = `U.S.` / 100, group = 1)) +
-  geom_line(color = "blue") +
-  geom_point() +
+ggplot(data = us_cotton_data$production, mapping = aes(x = year, y = `U.S.` / 100, group = 1)) +
+  geom_line(color = "blue", linewidth = 1) +
   labs(title = "U.S. Cotton Production Over Time",
        x = "Year",
        y = "Production (million 480-lb bales)") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# visualize exported cotton by major exporters over time
+ggplot(data = exporters_long, mapping = aes(x = year, y = Exports / 100, color = Country, group = Country)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Major Foreign Cotton Exporters Over Time",
+       x = "Year",
+       y = "Exports (million 480-lb bales)",
+       color = "Country") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+
+# visualize U.S. cotton prices over time
+ggplot(data = us_cotton_prices_long, mapping = aes(x = year, y = Price / 100, color = Type, group = Type)) +
+  geom_line(linewidth = 1) +
+  labs(title = "U.S. Cotton Prices Over Time",
+       x = "Year",
+       y = "Price (USD per pound)",
+       color = "Price Type") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+
+# visualize U.S. cotton prices distribution
+ggplot(data = us_cotton_prices_long, mapping = aes(x = Type, y = Price / 100, color = Type)) +
+  geom_boxplot() +
+  labs(title = "U.S. Cotton Prices Distribution",
+       y = "Price (USD per pound)") +
+  theme_minimal() +
+  theme(legend.position = "none")
