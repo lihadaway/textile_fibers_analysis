@@ -60,16 +60,16 @@ us_cotton_prices <- read_cotton_price_data(
   columns = c("year", "Farm Price", "Spot Price", "Mill Price")
 ) # cents per pound
 
+# output structure
+str(us_cotton_data)
+str(world_cotton_data)
+str(us_cotton_prices)
+
 # clean U.S. cotton prices table
 us_cotton_prices <- us_cotton_prices |>
   mutate(across(.cols = everything(), .fn = ~str_replace_all(string = .x, pattern = " 2/", replacement = ""))) |>
   mutate(across(.cols = everything(), .fn = ~ifelse(test = .x == "NA", yes = NA, no = .x))) |>
   mutate(across(.cols = -year, .fn = as.numeric))
-
-# output structure
-str(us_cotton_data)
-str(world_cotton_data)
-str(us_cotton_prices)
 
 # cast numeric columns
 us_cotton_data <- lapply(us_cotton_data, function(df) {
@@ -113,6 +113,11 @@ us_cotton_prices_long <- us_cotton_prices |>
   ) |>
   drop_na(Price)
 
+# select the top exporter(s) for each year
+yearly_max_exporters <- exporters_long |>
+  group_by(year) |>
+  slice_max(Exports)
+
 # visualize total cotton produced in U.S. over time
 ggplot(data = us_cotton_data$production, mapping = aes(x = year, y = `U.S.` / 100, group = 1)) +
   geom_line(color = "blue", linewidth = 1) +
@@ -126,6 +131,17 @@ ggplot(data = us_cotton_data$production, mapping = aes(x = year, y = `U.S.` / 10
 ggplot(data = exporters_long, mapping = aes(x = year, y = Exports / 100, color = Country, group = Country)) +
   geom_line(linewidth = 1) +
   labs(title = "Major Foreign Cotton Exporters Over Time",
+       x = "Year",
+       y = "Exports (million 480-lb bales)",
+       color = "Country") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+
+# visualize max cotton exporters over time
+ggplot(data = yearly_max_exporters, mapping = aes(x = year, y = Exports / 100, color = Country, group = 1)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  labs(title = "Top Cotton Exporters Over Time",
        x = "Year",
        y = "Exports (million 480-lb bales)",
        color = "Country") +
