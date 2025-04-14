@@ -1,0 +1,314 @@
+---
+title: 'Final Report: Statistical Analysis of Cotton, Wool, and Textile Data'
+author: "Leslie Hadaway"
+date: "2025-04-10"
+output:
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(readxl)
+```
+
+## Problem Understanding Phase
+
+The textile industry, especially cotton, plays a vital role in the global economy. This project examines historical data to uncover patterns in cotton production, pricing, and international trade. The goal is to identify trends and understand how internal and external factors influence market outcomes.
+
+## Data Set Description
+
+The data is sourced from the [USDA Economic Research Service](https://catalog.data.gov/dataset/cotton-wool-and-textile-data) and includes:
+
+-   U.S. production volumes (by state)
+-   Cotton prices (farm, spot, mill)
+-   Foreign exports/imports of cotton
+
+## Data Preparation Phase
+
+```{r data-prep-1}
+read_us_cotton_data <- function(sheet_name) {
+  stopifnot(is.character(sheet_name))
+  read_excel(
+    path = "./data/U.S.CottonSupplyandDemand.xlsx",
+    sheet = sheet_name,
+    range = "A7:U55",
+    col_names = c("year", "AL", "AZ", "AR", "CA", "FL", "GA", "KS", "KY", "LA", "MS", "MO", "NV", "NM", "NC", "OK",
+                  "SC", "TN", "TX", "VA", "U.S.")
+  )
+}
+
+read_world_cotton_data <- function(sheet_name, columns) {
+  stopifnot(is.character(sheet_name))
+  stopifnot(is.vector(columns))
+  read_excel(
+    path = "./data/WorldCottonSupplyandDemand.xlsx",
+    sheet = sheet_name,
+    range = "A7:K55",
+    col_names = columns
+  )
+}
+
+read_cotton_price_data <- function(sheet_name, columns) {
+  stopifnot(is.character(sheet_name))
+  stopifnot(is.vector(columns))
+  read_excel(
+    path = "./data/CottonPrices.xlsx",
+    sheet = sheet_name,
+    range = "A6:D54",
+    col_names = columns
+  )
+}
+```
+
+In this phase, multiple Excel sheets were loaded and cleaned to ensure the data was analysis-ready. The key steps included:
+
+-   **Custom Import Functions:** Three reusable functions (read_us_cotton_data, read_world_cotton_data, and read_cotton_price_data) were created to efficiently read structured Excel data. These functions enforce column naming, range selection, and type checking, helping ensure consistent and error-free imports.
+
+-   **Data Extraction:** From the U.S. cotton data-set, tables on acreage, yield, and production were extracted. The world data-set provided major exporter/importer values, and cotton price data included farm, spot, and mill prices. These cover core economic indicators needed for analysis and modeling.
+
+-   **Data Cleaning:**
+
+    -   Year and footnote formatting (e.g., " 1/", " 2/", " 3/") was stripped for consistency.
+    -   "NA" strings were converted to proper NA values.
+    -   All non-year columns were coerced into numeric format for quantitative analysis.
+
+These pre-processing steps were essential for standardizing and transforming the raw Excel data into structured and consistent R data frames, enabling smooth downstream analysis and modeling.
+
+```{r data-prep-2, include=FALSE}
+# read sheets
+us_cotton_data <- list(
+  planted_acreage = read_us_cotton_data("Table 4"), # 1,000 acres
+  harvested_acreage = read_us_cotton_data("Table 5"), # 1,000 acres
+  lint_yield = read_us_cotton_data("Table 6"), # pounds/harvested acre
+  production = read_us_cotton_data("Table 7") # 1,000 480-pound bales
+)
+
+world_cotton_data <- list(
+  major_foreign_exporters = read_world_cotton_data(
+    sheet_name = "Table 17",
+    columns = c("year", "Uzbekistan", "Africa", "Australia", "Pakistan", "India", "Turkey", "Sudan", "Brazil",
+                "Mexico", "Egypt")), # 1,000 480-pound bales
+  major_foreign_importers = read_world_cotton_data(
+    sheet_name = "Table 18",
+    columns = c("year", "Union 1/", "Bangladesh", "Vietnam", "Indonesia", "South Korea", "Thailand", "Turkey", "India",
+                "Pakistan", "China")) # 1,000 480-pound bales
+)
+
+us_cotton_prices <- read_cotton_price_data(
+  sheet_name = "Table11",
+  columns = c("year", "Farm Price", "Spot Price", "Mill Price")
+) # cents per pound
+
+# clean U.S. cotton prices table
+us_cotton_prices <- us_cotton_prices |>
+  mutate(across(.cols = everything(), .fn = ~str_replace_all(string = .x, pattern = " 2/", replacement = ""))) |>
+  mutate(across(.cols = everything(), .fn = ~ifelse(test = .x == "NA", yes = NA, no = .x))) |>
+  mutate(across(.cols = -year, .fn = as.numeric))
+
+# cast numeric columns
+us_cotton_data <- lapply(us_cotton_data, function(df) {
+  df |>
+    mutate(across(.cols = year, .fn = ~str_replace_all(string = .x, pattern = " 1/", replacement = ""))) |>
+    mutate(across(.cols = everything(), .fn = ~ifelse(test = .x == "NA", yes = NA, no = .x))) |>
+    mutate(across(.cols = 2:ncol(df), .fn = ~as.numeric(.)))
+})
+
+world_cotton_data <- lapply(world_cotton_data, function(df) {
+  df |>
+    mutate(across(.cols = year, .fn = ~str_replace_all(string = .x, pattern = " 3/| 4/", replacement = ""))) |>
+    mutate(across(.cols = everything(), .fn = ~ifelse(test = .x == "NA", yes = NA, no = .x))) |>
+    mutate(across(.cols = 2:ncol(df), .fn = ~as.numeric(.)))
+})
+```
+
+## Exploratory Data Analysis
+
+```{r eda-preprocessing}
+# pivot wide-format data to long format
+exporters_long <- world_cotton_data$major_foreign_exporters |>
+  pivot_longer(
+    cols = -year,
+    names_to = "Country",
+    values_to = "Exports"
+  ) |>
+  drop_na(Exports)
+
+us_cotton_prices_long <- us_cotton_prices |>
+  pivot_longer(
+    cols = -year,
+    names_to = "Type",
+    values_to = "Price"
+  ) |>
+  drop_na(Price)
+
+# select the top exporter(s) for each year
+yearly_max_exporters <- exporters_long |>
+  group_by(year) |>
+  slice_max(Exports)
+```
+
+To prepare the data-set for effective visualization and analysis, the cotton exports and price data were transformed from wide to long format:
+
+-   **Foreign Export Data:** The major_foreign_exporters data-set was reshaped so that each row represents a country’s cotton export value for a specific year. This format simplifies multi-country time series comparisons and enables easier grouping and plotting.
+
+-   **U.S. Cotton Price Data:** Similarly, U.S. price data was pivoted to long format, where each observation corresponds to a specific year and price type (Farm, Spot, or Mill). This structure is essential for producing comparative plots and analyzing price trends across types.
+
+Additionally, to highlight market leaders, the top cotton exporter(s) were identified for each year by selecting the country (or countries) with the highest export volume. This step supports targeted visualizations and insights into shifts in global export dominance over time.
+
+### U.S. Cotton Production Over Time
+
+This line plot shows the total cotton production in the U.S. over time. Values are scaled in millions of 480-pound bales.
+
+```{r eda-us-cotton-production}
+# visualize total cotton produced in U.S. over time
+ggplot(data = us_cotton_data$production, mapping = aes(x = year, y = `U.S.` / 100, group = 1)) +
+  geom_line(color = "blue", linewidth = 1) +
+  labs(title = "U.S. Cotton Production Over Time",
+       x = "Year",
+       y = "Production (million 480-lb bales)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Production fluctuates over the years with noticeable peaks and troughs, indicating cyclical or market-driven changes. A general declining trend may be observed in recent years.
+
+### Major Foreign Cotton Exporters Over Time
+
+This plot compares annual export volumes across major cotton-exporting countries. It reveals export trends, growth, or decline for each country.
+
+```{r eda-foreign-exporters-trend}
+# visualize exported cotton by major exporters over time
+ggplot(data = exporters_long, mapping = aes(x = year, y = Exports / 100, color = Country, group = Country)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Major Foreign Cotton Exporters Over Time",
+       x = "Year",
+       y = "Exports (million 480-lb bales)",
+       color = "Country") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+```
+
+While India and Brazil show increasing or stable export trends, some countries like Uzbekistan exhibit declining volumes. The diversification of global exporters is evident.
+
+### Top Cotton Exporters Per Year
+
+This plot shows which country had the highest cotton exports each year. It identifies export leaders over time, reflecting changing global market dominance.
+
+```{r eda-top-exporters-by-year}
+# visualize max cotton exporters over time
+ggplot(data = yearly_max_exporters, mapping = aes(x = year, y = Exports / 100, color = Country, group = 1)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  labs(title = "Top Cotton Exporters Over Time",
+       x = "Year",
+       y = "Exports (million 480-lb bales)",
+       color = "Country") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+```
+
+Earlier years show greater variation among leaders.
+
+### U.S. Cotton Prices Over Time
+
+Displays U.S. cotton prices (Farm, Spot, and Mill) across time. The plot shows similar patterns across all types with some fluctuations, giving insight into historical pricing behavior.
+
+```{r eda-cotton-prices-trend}
+# visualize U.S. cotton prices over time
+ggplot(data = us_cotton_prices_long, mapping = aes(x = year, y = Price / 100, color = Type, group = Type)) +
+  geom_line(linewidth = 1) +
+  labs(title = "U.S. Cotton Prices Over Time",
+       x = "Year",
+       y = "Price (USD per pound)",
+       color = "Price Type") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+```
+
+All price types generally follow the same trend, with periods of price spikes and dips. Spot Price is often slightly above Farm Price.
+
+### U.S. Cotton Prices Distribution
+
+A box-plot comparing the distribution of cotton prices by type. This helps to visualize central tendency and variability, as well as identify potential outliers in Farm, Spot, and Mill prices.
+
+```{r eda-cotton-price-distribution}
+# visualize U.S. cotton prices distribution
+ggplot(data = us_cotton_prices_long, mapping = aes(x = Type, y = Price / 100, color = Type)) +
+  geom_boxplot() +
+  labs(title = "U.S. Cotton Prices Distribution",
+       y = "Price (USD per pound)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+All three types show moderate variation, with Mill Price having slightly higher consistency (narrower IQR). Outliers are visible, especially in Farm and Spot prices, suggesting occasional market volatility.
+
+## Setup Phase
+
+The project is implemented in R using modular scripts:
+
+-   **01_eda.R** handles all data loading, cleaning, and transformation.
+-   **02_modeling.R** performs correlation analysis and modeling.
+
+Libraries used: `tidyverse`, `readxl`, `ggplot2`.
+
+## Modeling Phase
+
+To model the relationship between U.S. cotton spot prices and production/export volumes, a merged data-set was created by combining:
+
+-   U.S. production data
+-   U.S. spot prices data
+-   Major foreign cotton exporters (e.g., India, Brazil, Australia)
+
+```{r modeling-1}
+# Merge for modeling
+model_data <- merge(us_cotton_prices, us_cotton_data$production, by = "year") |>
+  select(year, `U.S.`, `Spot Price`) |>
+  merge(world_cotton_data$major_foreign_exporters, by = "year") |>
+  drop_na()
+
+cor(model_data[2:ncol(model_data)])[, "Spot Price"]
+```
+
+After cleaning and merging, correlation analysis showed the following:
+
+-   India (r = 0.325) and Brazil (r = 0.294) had moderate positive correlations with U.S. spot prices.
+-   Uzbekistan showed a moderate negative correlation (r = -0.325).
+-   U.S. production had a weak negative correlation (r = -0.158) with spot prices.
+
+```{r modeling-2}
+# Fit regression model
+model_fit <- lm(`Spot Price` ~ ., data = model_data |> select(-year))
+summary(model_fit)
+```
+
+Key Regression Results:
+
+-   Intercept: 105.6 suggests a baseline spot price when all predictors are zero.
+-   None of the predictor variables were statistically significant at the 5% level.
+-   India and Uzbekistan came closest, but still had p-values above 0.1.
+-   R² = 0.30, indicating that only \~30% of the variation in spot prices is explained by the model.
+-   Adjusted R² is negative, suggesting possible over-fitting or irrelevant predictors.
+-   F-statistic p-value = 0.483: The model is not statistically significant overall.
+
+The regression model shows that the selected variables are not strong predictors of U.S. cotton spot prices. Most coefficients are statistically insignificant, suggesting that other external variables or lagged factors may be better predictors.
+
+## Evaluation Phase
+
+-   **Correlation Analysis** provided preliminary insights into variable relationships.
+-   **Regression Modeling** indicated low explanatory power of included variables.
+
+### Interpretation
+
+-   Cotton spot prices are likely influenced by more complex or lagged economic and market factors.
+-   Time series effects, policy changes, and other market dynamics may be missing from the current model.
+-   India and Brazil exports are the most positively correlated with U.S. prices, which could justify further exploration (e.g., time-lag models or interaction effects).
+
+The model suggests that no single country’s export volume or U.S. production alone strongly predicts cotton spot prices in a linear framework.
+
+### Recommendations
+
+-   Investigate lagged effects (e.g., foreign export impacts with a 1-year delay).
+-   Explore non-linear models or regularization (ridge/lasso) to improve fit.
+-   Incorporate external economic indicators (e.g., oil prices, inflation) if available.
